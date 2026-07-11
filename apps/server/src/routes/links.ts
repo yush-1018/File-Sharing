@@ -7,6 +7,7 @@ import { env } from '../config/env.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { createLink, getLinks, getLinkById, revokeLink, recordView, recordDownload } from '../services/link.service.js';
+import { downloadLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -17,7 +18,16 @@ const storage = multer.diskStorage({
     cb(null, `link-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 } });
+const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const dangerous = ['.html', '.htm', '.svg', '.exe', '.bat', '.cmd', '.sh', '.js', '.php', '.pl', '.py'];
+  if (dangerous.includes(ext)) {
+    return cb(new Error('File type not allowed'));
+  }
+  cb(null, true);
+};
+
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 }, fileFilter });
 
 /* ── Create cloud link (upload file) ────────────────────────── */
 router.post('/', requireAuth, upload.single('file'), asyncHandler(async (req: AuthRequest, res) => {
@@ -51,7 +61,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 /* ── Download file from link ────────────────────────────────── */
-router.get('/:id/download', asyncHandler(async (req, res) => {
+router.get('/:id/download', downloadLimiter, asyncHandler(async (req, res) => {
   const link = getLinkById(req.params.id);
   if (!link) return res.status(404).json({ error: 'Link not found' });
   if (!link.active) return res.status(410).json({ error: 'Link has been revoked' });
@@ -67,7 +77,7 @@ router.get('/:id/download', asyncHandler(async (req, res) => {
   }
 
   recordDownload(link.id);
-  res.download(link.storagePath, link.fileName);
+  res.download(link.storagePath, link.fileName, { headers: { 'Content-Type': 'application/octet-stream' } });
 }));
 
 /* ── Revoke link ────────────────────────────────────────────── */

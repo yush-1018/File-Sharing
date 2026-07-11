@@ -24,7 +24,13 @@ const app = express();
 
 /* ── Global middleware ──────────────────────────────────────── */
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: env.corsOrigin || '*', credentials: true }));
+const corsOptions = {
+  origin: env.nodeEnv === 'production'
+    ? (env.corsOrigin && env.corsOrigin !== '*' ? env.corsOrigin : false)
+    : (env.corsOrigin || '*'),
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(authMiddleware);
@@ -44,8 +50,6 @@ app.use('/api/discovery', discoveryRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/links', linkRoutes);
 
-/* ── Serve uploaded files statically ────────────────────────── */
-app.use('/uploads', express.static(env.uploadDir));
 
 /* ── Error handler (must be last) ───────────────────────────── */
 app.use(errorHandler);
@@ -53,7 +57,7 @@ app.use(errorHandler);
 /* ── Create HTTP + Socket.IO server ─────────────────────────── */
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: env.corsOrigin || '*', credentials: true },
+  cors: corsOptions,
   maxHttpBufferSize: 100 * 1024 * 1024, // 100MB for large payloads
 });
 
@@ -69,6 +73,10 @@ server.listen(env.port, () => {
   console.log(`  ║  Socket.IO: ws://localhost:${env.port}              ║`);
   console.log('  ║  Storage:   In-memory (no DB required)        ║');
   console.log(`  ║  Uploads:   ./${env.uploadDir}/                      ║`);
+  if (env.nodeEnv === 'production') {
+    console.log('  ║  ⚠️ WARNING: Data is in-memory and will be    ║');
+    console.log('  ║  lost on restart!                             ║');
+  }
   console.log('  ╚═══════════════════════════════════════════════╝');
   console.log('');
 });

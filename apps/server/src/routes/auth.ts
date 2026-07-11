@@ -3,16 +3,17 @@ import { z } from 'zod';
 import { registerWithEmail, loginWithEmail, createGuestUser, getUser } from '../services/auth.service.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import type { AuthRequest } from '../middleware/auth.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
-router.post('/register', asyncHandler(async (req, res) => {
+router.post('/register', authLimiter, asyncHandler(async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string().min(8), name: z.string().min(2) });
   const result = await registerWithEmail(schema.parse(req.body));
   res.status(201).json(result);
 }));
 
-router.post('/login', asyncHandler(async (req, res) => {
+router.post('/login', authLimiter, asyncHandler(async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string().min(8) });
   const result = await loginWithEmail(schema.parse(req.body));
   res.json(result);

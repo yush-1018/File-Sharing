@@ -20,7 +20,16 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
   },
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 } }); // 10GB limit
+const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const dangerous = ['.html', '.htm', '.svg', '.exe', '.bat', '.cmd', '.sh', '.js', '.php', '.pl', '.py'];
+  if (dangerous.includes(ext)) {
+    return cb(new Error('File type not allowed'));
+  }
+  cb(null, true);
+};
+
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 }, fileFilter }); // 10GB limit
 
 /* ── Plan best method ───────────────────────────────────────── */
 router.post('/plan', asyncHandler(async (req, res) => {
