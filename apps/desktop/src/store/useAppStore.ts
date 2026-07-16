@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import * as api from '../lib/api';
 import { connectSocket, getSocket, announcePresence, joinRoom, sendChatViaSocket } from '../lib/socket';
+import { WebRTCFileTransfer, requestICEConfig } from '../lib/webrtc';
+import { generateFileKey, exportKey, encryptFile } from '../lib/crypto';
 
 /* ── Types ──────────────────────────────────────────────────── */
 export type Page = 'dashboard' | 'nearby' | 'transfers' | 'chat' | 'links' | 'settings';
@@ -14,6 +16,7 @@ export interface Device {
   speedMbps: number;
   distance: string;
   online: boolean;
+  socketId?: string;
 }
 
 export interface Transfer {
@@ -97,6 +100,7 @@ interface AppState {
   refreshChatRooms: () => Promise<void>;
   refreshLinks: () => Promise<void>;
   uploadFile: (file: File) => Promise<void>;
+  sendFileToPeer: (file: File, device: Device) => Promise<void>;
   toggleTransfer: (id: string) => Promise<void>;
   cancelTransfer: (id: string) => Promise<void>;
   setActiveChatRoom: (roomId: string) => void;
@@ -200,6 +204,76 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
       });
 
+      // Handle incoming WebRTC file offers
+      socket.on('webrtc:signal', async (data: { from: string; signal: any; metadata?: any }) => {
+        if (data.signal.type === 'offer' && data.metadata) {
+          // Someone wants to send us a file
+          const accept = confirm(
+            `Incoming file: ${data.metadata.fileName} (${formatBytes(data.metadata.fileSize)})\nAccept?`
+          );
+
+          if (accept) {
+            const iceConfig = await requestICEConfig();
+            const transfer = new WebRTCFileTransfer({
+              peerId: data.from,
+              onProgress: (progress, speed) => {
+                // Update a local transfer entry
+                set((s) => ({
+                  transfers: s.transfers.map((t) =>
+                    t.id === `webrtc-${data.from}`
+                      ? { ...t, progress, speed, status: 'in_progress' }
+                      : t
+                  ),
+                }));
+              },
+              onComplete: (file) => {
+                if (file) {
+                  // Download the received file
+                  const url = URL.createObjectURL(file.data);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = file.name;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  get().addToast(`Received: ${file.name}`, 'success');
+                }
+                set((s) => ({
+                  transfers: s.transfers.map((t) =>
+                    t.id === `webrtc-${data.from}`
+                      ? { ...t, progress: 100, status: 'completed', speed: '—' }
+                      : t
+                  ),
+                }));
+              },
+              onError: (err) => {
+                get().addToast(`WebRTC error: ${err.message}`, 'error');
+              },
+            }, iceConfig);
+
+            // Add a transfer entry for tracking
+            set((s) => ({
+              transfers: [...s.transfers, {
+                id: `webrtc-${data.from}`,
+                fileName: data.metadata.fileName,
+                fileSize: data.metadata.fileSize,
+                progress: 0,
+                speed: '—',
+                eta: '—',
+                transferMethod: 'webrtc',
+                status: 'in_progress',
+                direction: 'download',
+                peer: 'Peer',
+                createdAt: new Date().toISOString(),
+              }],
+            }));
+
+            await transfer.receiveFile(data.signal);
+          } else {
+            socket.emit('webrtc:reject', { to: data.from, reason: 'User declined' });
+          }
+        }
+      });
+
       // Load initial data
       await Promise.allSettled([
         get().refreshDevices(),
@@ -254,11 +328,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch { /* ignore */ }
   },
 
-  /* ── File upload ──────────────────────────────────────────── */
+  /* ── File upload (cloud) ──────────────────────────────────── */
   uploadFile: async (file: File) => {
     set({ uploadProgress: 0 });
     try {
-      const transfer = await api.uploadFile(file, (progress) => {
+      let fileToUpload = file;
+
+      // Encrypt if E2E is enabled
+      if (get().e2eEnabled) {
+        try {
+          const key = await generateFileKey();
+          const { encrypted } = await encryptFile(file, key);
+          fileToUpload = new File([encrypted], file.name, { type: file.type });
+          const keyHex = await exportKey(key);
+          // In a real implementation, the key would be shared via a secure channel
+          console.log('[E2E] File encrypted. Key (share securely):', keyHex.substring(0, 16) + '...');
+        } catch (e) {
+          console.warn('[E2E] Encryption failed, uploading unencrypted:', e);
+        }
+      }
+
+      await api.uploadFile(fileToUpload, (progress) => {
         set({ uploadProgress: progress });
       });
       set({ uploadProgress: null });
@@ -267,6 +357,74 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       set({ uploadProgress: null });
       get().addToast(`Upload failed: ${(err as Error).message}`, 'error');
+    }
+  },
+
+  /* ── Send file to peer via WebRTC ─────────────────────────── */
+  sendFileToPeer: async (file: File, device: Device) => {
+    if (!device.socketId) {
+      get().addToast('Cannot reach device — no socket connection', 'error');
+      return;
+    }
+
+    const transferId = `webrtc-send-${Date.now()}`;
+
+    // Add transfer entry for tracking
+    set((s) => ({
+      transfers: [...s.transfers, {
+        id: transferId,
+        fileName: file.name,
+        fileSize: file.size,
+        progress: 0,
+        speed: '—',
+        eta: '—',
+        transferMethod: 'webrtc',
+        status: 'in_progress',
+        direction: 'upload',
+        peer: device.name,
+        createdAt: new Date().toISOString(),
+      }],
+    }));
+
+    try {
+      const iceConfig = await requestICEConfig();
+      const transfer = new WebRTCFileTransfer({
+        peerId: device.socketId,
+        file,
+        onProgress: (progress, speed) => {
+          set((s) => ({
+            transfers: s.transfers.map((t) =>
+              t.id === transferId
+                ? { ...t, progress, speed, status: 'in_progress' }
+                : t
+            ),
+          }));
+        },
+        onComplete: () => {
+          set((s) => ({
+            transfers: s.transfers.map((t) =>
+              t.id === transferId
+                ? { ...t, progress: 100, status: 'completed', speed: '—' }
+                : t
+            ),
+          }));
+          get().addToast(`Sent ${file.name} to ${device.name}`, 'success');
+        },
+        onError: (err) => {
+          set((s) => ({
+            transfers: s.transfers.map((t) =>
+              t.id === transferId
+                ? { ...t, status: 'failed', speed: '—' }
+                : t
+            ),
+          }));
+          get().addToast(`Transfer failed: ${err.message}`, 'error');
+        },
+      }, iceConfig);
+
+      await transfer.sendFile();
+    } catch (err) {
+      get().addToast(`Failed to initiate transfer: ${(err as Error).message}`, 'error');
     }
   },
 
@@ -307,8 +465,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const msgs = await api.fetchChatMessages(roomId);
       set((s) => {
-        // Merge server messages without duplicating
-        const existingIds = new Set(s.chatMessages.filter(m => m.roomId !== roomId).map(m => m.id));
         const filtered = s.chatMessages.filter(m => m.roomId !== roomId);
         return { chatMessages: [...filtered, ...msgs] };
       });
@@ -331,7 +487,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   createLink: async (file: File, password?: string) => {
     set({ uploadProgress: 0 });
     try {
-      const link = await api.createCloudLink(file, { password }, (progress) => {
+      await api.createCloudLink(file, { password }, (progress) => {
         set({ uploadProgress: progress });
       });
       set({ uploadProgress: null });
@@ -377,3 +533,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTheme: (theme) => set({ theme }),
   setUserName: (userName) => set({ userName }),
 }));
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
+  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} KB`;
+  return `${bytes} B`;
+}

@@ -6,8 +6,13 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { Server } from 'socket.io';
 import { env } from './config/env.js';
+import { connectDatabase, disconnectDatabase } from './config/database.js';
+import { connectRedis, disconnectRedis } from './config/redis.js';
+import { ensureBucket } from './services/storage.service.js';
+import { seedDefaults } from './models/index.js';
 import authRoutes from './routes/auth.js';
 import transferRoutes from './routes/transfers.js';
+import chunkedRoutes from './routes/chunked.js';
 import discoveryRoutes from './routes/discovery.js';
 import chatRoutes from './routes/chat.js';
 import linkRoutes from './routes/links.js';
@@ -39,17 +44,17 @@ app.use(authMiddleware);
 app.get('/health', (_req, res) => res.json({
   ok: true,
   service: 'linkdrop-server',
-  mode: 'in-memory',
+  mode: 'mongodb',
   uptime: process.uptime(),
 }));
 
 /* ── Routes ─────────────────────────────────────────────────── */
 app.use('/api/auth', authRoutes);
 app.use('/api/transfers', transferRoutes);
+app.use('/api/transfers', chunkedRoutes);
 app.use('/api/discovery', discoveryRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/links', linkRoutes);
-
 
 /* ── Error handler (must be last) ───────────────────────────── */
 app.use(errorHandler);
@@ -63,20 +68,60 @@ const io = new Server(server, {
 
 registerSocketHandlers(io);
 
-/* ── Start server (no MongoDB required) ─────────────────────── */
-server.listen(env.port, () => {
-  console.log('');
-  console.log('  ╔═══════════════════════════════════════════════╗');
-  console.log('  ║           LinkDrop Server Started             ║');
-  console.log('  ╠═══════════════════════════════════════════════╣');
-  console.log(`  ║  API:       http://localhost:${env.port}            ║`);
-  console.log(`  ║  Socket.IO: ws://localhost:${env.port}              ║`);
-  console.log('  ║  Storage:   In-memory (no DB required)        ║');
-  console.log(`  ║  Uploads:   ./${env.uploadDir}/                      ║`);
-  if (env.nodeEnv === 'production') {
-    console.log('  ║  ⚠️ WARNING: Data is in-memory and will be    ║');
-    console.log('  ║  lost on restart!                             ║');
+/* ── Start server with MongoDB + Redis + S3 ─────────────────── */
+async function start() {
+  try {
+    // Connect to MongoDB
+    await connectDatabase();
+    await seedDefaults();
+    console.log('[Startup] MongoDB ready');
+  } catch (err) {
+    console.warn('[Startup] MongoDB connection failed:', (err as Error).message);
+    console.warn('[Startup] Server will start but data operations will fail');
   }
-  console.log('  ╚═══════════════════════════════════════════════╝');
-  console.log('');
-});
+
+  try {
+    // Connect to Redis
+    await connectRedis();
+    console.log('[Startup] Redis ready');
+  } catch (err) {
+    console.warn('[Startup] Redis connection failed:', (err as Error).message);
+    console.warn('[Startup] Resume tokens and caching will be unavailable');
+  }
+
+  try {
+    // Ensure S3 bucket exists
+    await ensureBucket();
+    console.log('[Startup] S3 ready');
+  } catch (err) {
+    console.warn('[Startup] S3/MinIO not available:', (err as Error).message);
+    console.warn('[Startup] Uploads will use local storage');
+  }
+
+  server.listen(env.port, () => {
+    console.log('');
+    console.log('  ╔═══════════════════════════════════════════════╗');
+    console.log('  ║           LinkDrop Server Started             ║');
+    console.log('  ╠═══════════════════════════════════════════════╣');
+    console.log(`  ║  API:       http://localhost:${env.port}            ║`);
+    console.log(`  ║  Socket.IO: ws://localhost:${env.port}              ║`);
+    console.log('  ║  Storage:   MongoDB + S3/MinIO + Redis        ║');
+    console.log(`  ║  Uploads:   ./${env.uploadDir}/                      ║`);
+    console.log('  ╚═══════════════════════════════════════════════╝');
+    console.log('');
+  });
+}
+
+/* ── Graceful shutdown ──────────────────────────────────────── */
+async function shutdown() {
+  console.log('\n[Shutdown] Gracefully shutting down...');
+  server.close();
+  await disconnectDatabase();
+  await disconnectRedis();
+  process.exit(0);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+
+start();

@@ -1,11 +1,65 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Build output
 dist/
-uploads/
+build/
+out/
+*.tsbuildinfo
+
+# Environment variables (NEVER commit secrets)
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
+
+# Uploaded files
+uploads/
+*.mp3
+*.mp4
+*.zip
+*.tar.gz
+
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+
+# Tauri build
+src-tauri/target/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+*.iml
+
+# Rust
+target/
+Cargo.lock
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.tgz
+.cache/

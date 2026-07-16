@@ -21,13 +21,13 @@ router.post('/login', authLimiter, asyncHandler(async (req, res) => {
 
 router.post('/guest', asyncHandler(async (req, res) => {
   const name = req.body?.name;
-  const result = createGuestUser(name);
+  const result = await createGuestUser(name);
   res.status(201).json(result);
 }));
 
 router.get('/me', asyncHandler(async (req: AuthRequest, res) => {
   if (!req.userId) return res.status(401).json({ error: 'Not authenticated' });
-  const user = getUser(req.userId);
+  const user = await getUser(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ user });
 }));

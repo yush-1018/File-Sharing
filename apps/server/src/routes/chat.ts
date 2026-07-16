@@ -7,8 +7,8 @@ import { getRooms, getMessages, addMessage, getOrCreateRoom } from '../services/
 const router = Router();
 
 /* ── List rooms ─────────────────────────────────────────────── */
-router.get('/rooms', asyncHandler(async (_req, res) => {
-  const rooms = getRooms();
+router.get('/rooms', requireAuth, asyncHandler(async (_req, res) => {
+  const rooms = await getRooms();
   res.json(rooms);
 }));
 
@@ -16,13 +16,13 @@ router.get('/rooms', asyncHandler(async (_req, res) => {
 router.post('/rooms', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
   const schema = z.object({ name: z.string().min(1) });
   const { name } = schema.parse(req.body);
-  const room = getOrCreateRoom(name.toLowerCase().replace(/\s+/g, '-'), name);
+  const room = await getOrCreateRoom(name.toLowerCase().replace(/\s+/g, '-'), name);
   res.status(201).json(room);
 }));
 
 /* ── Get messages ───────────────────────────────────────────── */
-router.get('/rooms/:roomId/messages', asyncHandler(async (req, res) => {
-  const msgs = getMessages(req.params.roomId);
+router.get('/rooms/:roomId/messages', requireAuth, asyncHandler(async (req, res) => {
+  const msgs = await getMessages(req.params.roomId);
   res.json(msgs);
 }));
 
@@ -30,7 +30,7 @@ router.get('/rooms/:roomId/messages', asyncHandler(async (req, res) => {
 router.post('/rooms/:roomId/messages', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
   const schema = z.object({ text: z.string().min(1) });
   const { text } = schema.parse(req.body);
-  const msg = addMessage({
+  const msg = await addMessage({
     roomId: req.params.roomId as string,
     senderUserId: req.userId!,
     senderName: req.userName || 'Anonymous',

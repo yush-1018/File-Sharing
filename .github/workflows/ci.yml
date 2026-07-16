@@ -7,6 +7,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -17,4 +26,10 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm -r run lint
+        continue-on-error: true # Just a warning if linter fails for now
       - run: pnpm -r build
+      - run: pnpm -r test
+        env:
+          MONGODB_URI: mongodb://localhost:27017/linkdrop_test
+          REDIS_URL: redis://localhost:6379

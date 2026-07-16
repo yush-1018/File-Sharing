@@ -1,5 +1,6 @@
-import { transfers, newId } from '../store/memory.js';
-import type { Transfer } from '../store/memory.js';
+import { Transfer, type ITransfer } from '../models/index.js';
+import { setResumeToken, getResumeToken } from '../config/redis.js';
+import { randomUUID } from 'node:crypto';
 
 export type TransferPreference = 'local' | 'webrtc' | 'bluetooth' | 'cloud';
 
@@ -16,72 +17,147 @@ export function chooseTransferMethod(input: {
   return 'cloud';
 }
 
-export function createTransfer(input: {
+export async function createTransfer(input: {
   senderUserId: string;
   fileName: string;
   fileSize: number;
   mimeType: string;
   storagePath?: string;
+  s3Key?: string;
   peer?: string;
-}): Transfer {
-  const id = newId();
-  const transfer: Transfer = {
-    id,
+  transferMethod?: TransferPreference;
+  encrypted?: boolean;
+  encryptionIV?: string;
+}): Promise<Record<string, any>> {
+  const resumeToken = randomUUID();
+  const method = input.transferMethod || 'cloud';
+
+  const transfer = await Transfer.create({
     senderUserId: input.senderUserId,
     fileName: input.fileName,
     fileSize: input.fileSize,
     mimeType: input.mimeType,
     storagePath: input.storagePath,
-    transferMethod: 'cloud',
-    status: 'completed',
-    progress: 100,
-    transferredBytes: input.fileSize,
+    s3Key: input.s3Key,
+    transferMethod: method,
+    status: input.s3Key ? 'completed' : 'uploading',
+    progress: input.s3Key ? 100 : 0,
+    transferredBytes: input.s3Key ? input.fileSize : 0,
     speed: '—',
     eta: '—',
     direction: 'upload',
     peer: input.peer || 'Cloud',
-    resumeToken: newId(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    resumeToken,
+    encrypted: input.encrypted || false,
+    encryptionIV: input.encryptionIV,
+  });
+
+  // Store resume token in Redis with 24h TTL
+  try {
+    await setResumeToken(transfer._id.toString(), resumeToken);
+  } catch {
+    // Redis may not be available in dev; continue gracefully
+  }
+
+  return formatTransfer(transfer);
+}
+
+export async function getTransfersByUser(userId: string): Promise<Record<string, any>[]> {
+  const transfers = await Transfer.find({
+    $or: [{ senderUserId: userId }, { receiverUserId: userId }],
+  }).sort({ createdAt: -1 }).lean();
+
+  return transfers.map(formatTransfer);
+}
+
+export async function getTransferById(id: string): Promise<Record<string, any> | null> {
+  try {
+    const transfer = await Transfer.findById(id).lean();
+    return transfer ? formatTransfer(transfer) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateTransferStatus(
+  id: string,
+  status: ITransfer['status'],
+): Promise<Record<string, any> | null> {
+  const update: Record<string, any> = { status };
+  if (status === 'paused') {
+    update.speed = '—';
+    update.eta = '—';
+  }
+
+  try {
+    const transfer = await Transfer.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+    return transfer ? formatTransfer(transfer) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateTransferProgress(
+  id: string,
+  transferredBytes: number,
+  speed?: string,
+): Promise<Record<string, any> | null> {
+  try {
+    const transfer = await Transfer.findById(id);
+    if (!transfer) return null;
+
+    transfer.transferredBytes = transferredBytes;
+    transfer.progress = transfer.fileSize > 0
+      ? Math.round((transferredBytes / transfer.fileSize) * 100)
+      : 0;
+    if (speed) transfer.speed = speed;
+
+    if (transfer.progress >= 100) {
+      transfer.status = 'completed';
+      transfer.speed = '—';
+      transfer.eta = '—';
+      transfer.progress = 100;
+    }
+
+    await transfer.save();
+    return formatTransfer(transfer);
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyResumeToken(transferId: string, token: string): Promise<boolean> {
+  try {
+    const stored = await getResumeToken(transferId);
+    return stored === token;
+  } catch {
+    // If Redis is down, allow resume if the transfer exists
+    const transfer = await Transfer.findById(transferId).lean();
+    return transfer?.resumeToken === token;
+  }
+}
+
+function formatTransfer(t: any): Record<string, any> {
+  return {
+    id: t._id.toString(),
+    senderUserId: t.senderUserId?.toString(),
+    receiverUserId: t.receiverUserId?.toString(),
+    fileName: t.fileName,
+    fileSize: t.fileSize,
+    mimeType: t.mimeType,
+    storagePath: t.storagePath,
+    s3Key: t.s3Key,
+    transferMethod: t.transferMethod,
+    status: t.status,
+    progress: t.progress,
+    transferredBytes: t.transferredBytes,
+    speed: t.speed,
+    eta: t.eta,
+    direction: t.direction,
+    peer: t.peer,
+    resumeToken: t.resumeToken,
+    encrypted: t.encrypted,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
   };
-  transfers.set(id, transfer);
-  return transfer;
-}
-
-export function getTransfersByUser(userId: string): Transfer[] {
-  const result: Transfer[] = [];
-  for (const t of transfers.values()) {
-    if (t.senderUserId === userId || t.receiverUserId === userId) result.push(t);
-  }
-  return result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-}
-
-export function getTransferById(id: string): Transfer | undefined {
-  return transfers.get(id);
-}
-
-export function updateTransferStatus(id: string, status: Transfer['status']): Transfer | null {
-  const t = transfers.get(id);
-  if (!t) return null;
-  t.status = status;
-  t.updatedAt = new Date();
-  if (status === 'paused') { t.speed = '—'; t.eta = '—'; }
-  transfers.set(id, t);
-  return t;
-}
-
-export function updateTransferProgress(id: string, transferredBytes: number, speed?: string): Transfer | null {
-  const t = transfers.get(id);
-  if (!t) return null;
-  t.transferredBytes = transferredBytes;
-  t.progress = t.fileSize > 0 ? Math.round((transferredBytes / t.fileSize) * 100) : 0;
-  if (speed) t.speed = speed;
-  if (t.progress >= 100) {
-    t.status = 'completed';
-    t.speed = '—';
-    t.eta = '—';
-  }
-  t.updatedAt = new Date();
-  transfers.set(id, t);
-  return t;
 }

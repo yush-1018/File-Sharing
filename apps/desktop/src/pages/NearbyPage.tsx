@@ -3,11 +3,22 @@ import { Laptop, Smartphone, Tablet, Send, Signal } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 export default function NearbyPage() {
-  const { devices, refreshDevices, addToast, uploadFile } = useAppStore();
+  const { devices, refreshDevices, addToast, sendFileToPeer } = useAppStore();
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const handleSendTo = (deviceName: string) => {
-    addToast(`Ready to send to ${deviceName} — pick a file`, 'info');
+  const handleSendTo = (device: typeof devices[0]) => {
+    // Create a hidden file input for this device
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (!files) return;
+      Array.from(files).forEach((file) => {
+        sendFileToPeer(file, device);
+      });
+    };
+    input.click();
   };
 
   return (
@@ -65,7 +76,7 @@ export default function NearbyPage() {
                 <button
                   className="btn btn-primary btn-sm"
                   disabled={!d.online}
-                  onClick={() => handleSendTo(d.name)}
+                  onClick={() => handleSendTo(d)}
                 >
                   <Send size={13} /> Send
                 </button>
