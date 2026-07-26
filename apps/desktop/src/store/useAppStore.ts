@@ -530,7 +530,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleE2E: () => set((s) => ({ e2eEnabled: !s.e2eEnabled })),
   toggleAutoResume: () => set((s) => ({ autoResume: !s.autoResume })),
   setChunkSize: (chunkSize) => set({ chunkSize }),
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) => {
+    set({ theme });
+    const root = document.documentElement;
+    if (theme === 'light') {
+      root.classList.remove('dark');
+      root.classList.add('light');
+    } else if (theme === 'dark') {
+      root.classList.remove('light');
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('light', 'dark');
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.add(isDark ? 'dark' : 'light');
+    }
+  },
   setUserName: (userName) => set({ userName }),
 }));
 

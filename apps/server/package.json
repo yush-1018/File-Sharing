@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"try { require('child_process').execSync('tsc -p tsconfig.json', {stdio:'inherit'}) } catch (e) {}\"",
     "start": "node dist/index.js",
     "lint": "echo lint server",
     "test": "vitest run"

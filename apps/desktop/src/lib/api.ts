@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -21,7 +21,7 @@ export function getToken() {
 
 /* ── Auth ────────────────────────────────────────────────────── */
 export async function guestLogin(name?: string) {
-  const { data } = await api.post('/api/auth/guest', { name });
+  const { data } = await api.post('/api/auth/guest', { name }, { timeout: 90000 });
   setToken(data.token);
   return data;
 }
