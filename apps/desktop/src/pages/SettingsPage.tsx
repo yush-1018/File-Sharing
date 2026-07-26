@@ -3,8 +3,8 @@ import { useAppStore } from '../store/useAppStore';
 
 export default function SettingsPage() {
   const {
-    userName, e2eEnabled, autoResume, chunkSize, theme,
-    toggleE2E, toggleAutoResume, setChunkSize, setTheme, setUserName,
+    userName, autoResume, chunkSize, theme,
+    toggleAutoResume, setChunkSize, setTheme, setUserName,
   } = useAppStore();
 
   return (
@@ -30,32 +30,6 @@ export default function SettingsPage() {
             onChange={(e) => setUserName(e.target.value)}
             style={{ width: 200 }}
           />
-        </div>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Device name</div>
-            <div className="setting-desc">This device's identity on the network</div>
-          </div>
-          <input className="input" defaultValue="My Workstation" style={{ width: 200 }} />
-        </div>
-      </section>
-
-      {/* Security */}
-      <section className="settings-section">
-        <h3><Shield size={16} style={{ verticalAlign: 'middle', marginRight: 8 }} />Security</h3>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">End-to-end encryption</div>
-            <div className="setting-desc">Encrypt all file transfers with AES-256</div>
-          </div>
-          <button className={`toggle ${e2eEnabled ? 'on' : ''}`} onClick={toggleE2E} />
-        </div>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Require PIN for incoming transfers</div>
-            <div className="setting-desc">Ask for a 4-digit PIN before accepting files</div>
-          </div>
-          <button className="toggle" />
         </div>
       </section>
 
@@ -83,25 +57,6 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Storage */}
-      <section className="settings-section">
-        <h3><HardDrive size={16} style={{ verticalAlign: 'middle', marginRight: 8 }} />Cloud Storage</h3>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">S3 endpoint</div>
-            <div className="setting-desc">MinIO / Cloudflare R2 / AWS S3 endpoint URL</div>
-          </div>
-          <input className="input" defaultValue="http://localhost:9000" style={{ width: 220 }} />
-        </div>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Bucket name</div>
-            <div className="setting-desc">Object storage bucket for cloud relay</div>
-          </div>
-          <input className="input" defaultValue="linkdrop" style={{ width: 220 }} />
-        </div>
-      </section>
-
       {/* Appearance */}
       <section className="settings-section">
         <h3><Palette size={16} style={{ verticalAlign: 'middle', marginRight: 8 }} />Appearance</h3>
@@ -124,13 +79,7 @@ export default function SettingsPage() {
         <div className="setting-row">
           <div>
             <div className="setting-label">LinkDrop</div>
-            <div className="setting-desc">Version 0.1.0 • Tauri + React + Vite</div>
-          </div>
-        </div>
-        <div className="setting-row">
-          <div>
-            <div className="setting-label">Server</div>
-            <div className="setting-desc">Node.js + Express + Socket.IO + MongoDB</div>
+            <div className="setting-desc">Version 1.0.0 • Production Ready</div>
           </div>
         </div>
       </section>
