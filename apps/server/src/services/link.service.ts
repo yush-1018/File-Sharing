@@ -1,6 +1,9 @@
+import mongoose from 'mongoose';
+import fs from 'node:fs';
 import { CloudLink, type ICloudLink } from '../models/index.js';
 import { env } from '../config/env.js';
 import { deriveKeyFromPassword } from './encryption.service.js';
+import { deleteFromS3 } from './storage.service.js';
 
 export async function createLink(input: {
   userId: string;
@@ -23,14 +26,16 @@ export async function createLink(input: {
     passwordSalt = derived.salt;
   }
 
+  const linkId = new mongoose.Types.ObjectId();
   const link = await CloudLink.create({
+    _id: linkId,
     userId: input.userId,
     fileName: input.fileName,
     fileSize: input.fileSize,
     mimeType: input.mimeType,
     storagePath: input.storagePath,
     s3Key: input.s3Key,
-    url: `${env.baseUrl}/api/links/{id}/download`,
+    url: `${env.baseUrl}/api/links/${linkId.toString()}/download`,
     passwordHash,
     passwordSalt,
     iv: input.iv,
@@ -41,11 +46,40 @@ export async function createLink(input: {
     expiresAt: new Date(Date.now() + (input.expiresInDays || 7) * 86400000),
   });
 
-  // Update URL with the actual ID
-  link.url = `${env.baseUrl}/api/links/${link._id.toString()}/download`;
-  await link.save();
-
   return formatLink(link);
+}
+
+/** Background worker to clean up storage files of expired or revoked links */
+export async function cleanupExpiredLinks(): Promise<{ cleanedCount: number }> {
+  try {
+    const expiredLinks = await CloudLink.find({
+      $or: [
+        { expiresAt: { $lt: new Date() } },
+        { active: false },
+      ],
+    }).lean();
+
+    let cleanedCount = 0;
+    for (const link of expiredLinks) {
+      if (link.storagePath && fs.existsSync(link.storagePath)) {
+        try { fs.unlinkSync(link.storagePath); } catch {}
+      }
+      if (link.s3Key) {
+        try { await deleteFromS3(link.s3Key); } catch {}
+      }
+      cleanedCount++;
+    }
+
+    if (expiredLinks.length > 0) {
+      await CloudLink.deleteMany({ _id: { $in: expiredLinks.map((l) => l._id) } });
+      console.log(`[CleanupWorker] Cleaned up ${cleanedCount} expired link files`);
+    }
+
+    return { cleanedCount };
+  } catch (err) {
+    console.error('[CleanupWorker] Error during cleanup:', (err as Error).message);
+    return { cleanedCount: 0 };
+  }
 }
 
 export function verifyLinkPassword(link: Record<string, any>, providedPassword?: string): boolean {
@@ -56,9 +90,17 @@ export function verifyLinkPassword(link: Record<string, any>, providedPassword?:
   return derived.key.toString('hex') === link.passwordHash;
 }
 
-export async function getLinks(userId: string): Promise<Record<string, any>[]> {
-  const links = await CloudLink.find({ userId }).sort({ createdAt: -1 }).lean();
-  return links.map(formatLink);
+export async function getLinks(userId: string, page = 1, limit = 50): Promise<{ links: Record<string, any>[]; total: number; page: number }> {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(100, Math.max(1, limit));
+  const skip = (safePage - 1) * safeLimit;
+
+  const [links, total] = await Promise.all([
+    CloudLink.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+    CloudLink.countDocuments({ userId }),
+  ]);
+
+  return { links: links.map(formatLink), total, page: safePage };
 }
 
 export async function getLinkById(id: string): Promise<Record<string, any> | null> {

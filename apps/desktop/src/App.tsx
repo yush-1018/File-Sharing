@@ -23,6 +23,13 @@ const navItems: { page: Page; label: string; icon: typeof LayoutDashboard }[] = 
 
 /* ── Page renderer ──────────────────────────────────────────── */
 function PageContent({ page }: { page: Page }) {
+  // Sync window location hash for browser history navigation
+  useEffect(() => {
+    if (window.location.hash !== `#${page}`) {
+      window.history.pushState(null, '', `#${page}`);
+    }
+  }, [page]);
+
   switch (page) {
     case 'dashboard': return <DashboardPage />;
     case 'nearby':    return <NearbyPage />;

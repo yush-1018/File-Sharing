@@ -30,10 +30,15 @@ const app = express();
 /* ── Global middleware ──────────────────────────────────────── */
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 const corsOptions = {
-  origin: env.nodeEnv === 'production'
-    ? (env.corsOrigin && env.corsOrigin !== '*' ? env.corsOrigin : false)
-    : (env.corsOrigin || '*'),
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin || env.nodeEnv !== 'production') return callback(null, true);
+    if (env.corsOrigin === '*' || env.corsOrigin.split(',').includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Blocked by CORS policy'));
+  },
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Correlation-ID', 'X-Link-Password'],
 };
 app.use(cors(corsOptions));
 app.use(compression());
@@ -63,7 +68,7 @@ app.use(errorHandler);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: corsOptions,
-  maxHttpBufferSize: 100 * 1024 * 1024, // 100MB for large payloads
+  maxHttpBufferSize: 1 * 1024 * 1024, // 1MB buffer for signaling messages
 });
 
 registerSocketHandlers(io);

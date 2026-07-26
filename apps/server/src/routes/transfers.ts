@@ -12,26 +12,9 @@ import {
 import { uploadToS3, generateS3Key } from '../services/storage.service.js';
 import { scanFile } from '../services/scan.service.js';
 
+import { sharedMulterUpload } from '../utils/upload.js';
+
 const router = Router();
-
-/* ── Multer for file uploads ────────────────────────────────── */
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, env.uploadDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
-const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-  const dangerous = ['.html', '.htm', '.svg', '.exe', '.bat', '.cmd', '.sh', '.js', '.php', '.pl', '.py'];
-  if (dangerous.includes(ext)) {
-    return cb(new Error('File type not allowed'));
-  }
-  cb(null, true);
-};
-
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 }, fileFilter }); // 10GB limit
 
 /* ── Plan best method ───────────────────────────────────────── */
 router.post('/plan', requireAuth, asyncHandler(async (req, res) => {
@@ -47,7 +30,7 @@ router.post('/plan', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 /* ── Upload file (create transfer) ──────────────────────────── */
-router.post('/', requireAuth, upload.single('file'), asyncHandler(async (req: AuthRequest, res) => {
+router.post('/', requireAuth, sharedMulterUpload.single('file'), asyncHandler(async (req: AuthRequest, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file provided' });
   }
@@ -106,36 +89,64 @@ router.get('/', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
 
 /* ── Get one transfer ───────────────────────────────────────── */
 router.get('/:id', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
-  const t = await getTransferById(req.params.id as string);
+  const transferId = req.params.id as string;
+  const t = await getTransferById(transferId);
   if (!t) return res.status(404).json({ error: 'Transfer not found' });
+  if (t.senderUserId !== req.userId && t.receiverUserId !== req.userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
   res.json(t);
 }));
 
 /* ── Update progress ────────────────────────────────────────── */
-router.patch('/:id/progress', requireAuth, asyncHandler(async (req, res) => {
+router.patch('/:id/progress', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const transferId = req.params.id as string;
+  const existing = await getTransferById(transferId);
+  if (!existing) return res.status(404).json({ error: 'Transfer not found' });
+  if (existing.senderUserId !== req.userId && existing.receiverUserId !== req.userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
   const schema = z.object({ transferredBytes: z.number(), speed: z.string().optional() });
   const body = schema.parse(req.body);
-  const t = await updateTransferProgress(req.params.id, body.transferredBytes, body.speed);
-  if (!t) return res.status(404).json({ error: 'Transfer not found' });
+  const t = await updateTransferProgress(transferId, body.transferredBytes, body.speed);
   res.json(t);
 }));
 
 /* ── Pause / Resume / Cancel ────────────────────────────────── */
-router.post('/:id/pause', requireAuth, asyncHandler(async (req, res) => {
-  const t = await updateTransferStatus(req.params.id, 'paused');
-  if (!t) return res.status(404).json({ error: 'Transfer not found' });
+router.post('/:id/pause', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const transferId = req.params.id as string;
+  const existing = await getTransferById(transferId);
+  if (!existing) return res.status(404).json({ error: 'Transfer not found' });
+  if (existing.senderUserId !== req.userId && existing.receiverUserId !== req.userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const t = await updateTransferStatus(transferId, 'paused');
   res.json(t);
 }));
 
-router.post('/:id/resume', requireAuth, asyncHandler(async (req, res) => {
-  const t = await updateTransferStatus(req.params.id, 'in_progress');
-  if (!t) return res.status(404).json({ error: 'Transfer not found' });
+router.post('/:id/resume', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const transferId = req.params.id as string;
+  const existing = await getTransferById(transferId);
+  if (!existing) return res.status(404).json({ error: 'Transfer not found' });
+  if (existing.senderUserId !== req.userId && existing.receiverUserId !== req.userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const t = await updateTransferStatus(transferId, 'in_progress');
   res.json(t);
 }));
 
-router.post('/:id/cancel', requireAuth, asyncHandler(async (req, res) => {
-  const t = await updateTransferStatus(req.params.id, 'cancelled');
-  if (!t) return res.status(404).json({ error: 'Transfer not found' });
+router.post('/:id/cancel', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const transferId = req.params.id as string;
+  const existing = await getTransferById(transferId);
+  if (!existing) return res.status(404).json({ error: 'Transfer not found' });
+  if (existing.senderUserId !== req.userId && existing.receiverUserId !== req.userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const t = await updateTransferStatus(transferId, 'cancelled');
   res.json(t);
 }));
 

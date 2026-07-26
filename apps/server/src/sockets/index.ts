@@ -1,5 +1,6 @@
 import type { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 import { env } from '../config/env.js';
 import { announceDevice, setDeviceOffline, getNearbyDevices } from '../services/discovery.service.js';
 import { addMessage, getMessages } from '../services/chat.service.js';
@@ -44,96 +45,124 @@ export function registerSocketHandlers(io: Server) {
     }, 10000);
 
     /* ── Device presence ──────────────────────────────────────── */
-    socket.on('presence:announce', async (payload: {
-      name: string; platform: string; deviceType: 'desktop' | 'mobile' | 'tablet'; userId?: string;
-    }) => {
+    socket.on('presence:announce', async (rawPayload: unknown) => {
+      const schema = z.object({
+        name: z.string().min(1),
+        platform: z.string(),
+        deviceType: z.enum(['desktop', 'mobile', 'tablet']),
+        userId: z.string().optional(),
+      });
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) return socket.emit('error', { message: 'Invalid presence payload' });
+
       const latencyMs = pingLatencies.get(socket.id);
       const device = await announceDevice({
-        ...payload,
-        userId: payload.userId || userId,
+        name: parsed.data.name,
+        platform: parsed.data.platform,
+        deviceType: parsed.data.deviceType,
+        userId: parsed.data.userId || userId,
         socketId: socket.id,
         ipAddress: clientIP,
         latencyMs,
       });
       socket.broadcast.emit('presence:update', device);
-      // Send current device list back to the announcer
       const devices = await getNearbyDevices();
       socket.emit('presence:list', devices);
     });
 
     /* ── Room management ──────────────────────────────────────── */
     socket.on('room:join', async (roomId: string) => {
+      if (typeof roomId !== 'string' || !roomId) return;
       socket.join(roomId);
-      console.log(`[Socket] ${socket.id} joined room ${roomId}`);
-      // Send room history
       const history = await getMessages(roomId);
       socket.emit('chat:history', { roomId, messages: history });
     });
 
     socket.on('room:leave', (roomId: string) => {
-      socket.leave(roomId);
+      if (typeof roomId === 'string') socket.leave(roomId);
     });
 
     /* ── Chat ─────────────────────────────────────────────────── */
-    socket.on('chat:send', async (payload: {
-      roomId: string; text: string; senderUserId: string; senderName: string;
-    }) => {
+    socket.on('chat:send', async (rawPayload: unknown) => {
+      const schema = z.object({
+        roomId: z.string().min(1),
+        text: z.string().min(1).max(5000),
+        senderUserId: z.string(),
+        senderName: z.string(),
+      });
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) return socket.emit('error', { message: 'Invalid chat payload' });
+
       const msg = await addMessage({
-        roomId: payload.roomId,
-        senderUserId: payload.senderUserId,
-        senderName: payload.senderName,
-        text: payload.text,
+        roomId: parsed.data.roomId,
+        senderUserId: parsed.data.senderUserId,
+        senderName: parsed.data.senderName,
+        text: parsed.data.text,
       });
-      // Broadcast to everyone in the room (including sender for confirmation)
-      io.to(payload.roomId).emit('chat:message', msg);
-      // Also broadcast globally for sidebar updates
-      io.emit('chat:new', msg);
+      io.to(parsed.data.roomId).emit('chat:message', msg);
     });
 
-    socket.on('chat:typing', (payload: { roomId: string; userName: string; typing: boolean }) => {
-      socket.to(payload.roomId).emit('chat:typing', payload);
+    /* ── WebRTC signaling (requires auth) ────────────────────────── */
+    socket.on('webrtc:signal', (rawPayload: unknown) => {
+      if (!userId) return socket.emit('error', { message: 'Authentication required for WebRTC signaling' });
+      const schema = z.object({
+        to: z.string().min(1),
+        signal: z.any(),
+        metadata: z.object({ fileName: z.string().optional(), fileSize: z.number().optional(), encryptionKey: z.string().optional() }).optional(),
+      });
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) return socket.emit('error', { message: 'Invalid signaling payload' });
+
+      io.to(parsed.data.to).emit('webrtc:signal', { from: socket.id, signal: parsed.data.signal, metadata: parsed.data.metadata });
     });
 
-    /* ── WebRTC signaling ─────────────────────────────────────── */
-    socket.on('webrtc:signal', ({ to, signal, metadata }: {
-      to: string;
-      signal: any;
-      metadata?: { fileName?: string; fileSize?: number; encryptionKey?: string };
-    }) => {
-      io.to(to).emit('webrtc:signal', { from: socket.id, signal, metadata });
+    socket.on('webrtc:accept', (rawPayload: unknown) => {
+      if (!userId) return socket.emit('error', { message: 'Authentication required' });
+      const schema = z.object({ to: z.string().min(1) });
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) return;
+      io.to(parsed.data.to).emit('webrtc:accepted', { from: socket.id });
     });
 
-    socket.on('webrtc:accept', ({ to }: { to: string }) => {
-      io.to(to).emit('webrtc:accepted', { from: socket.id });
+    socket.on('webrtc:reject', (rawPayload: unknown) => {
+      if (!userId) return socket.emit('error', { message: 'Authentication required' });
+      const schema = z.object({ to: z.string().min(1), reason: z.string().optional() });
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) return;
+      io.to(parsed.data.to).emit('webrtc:rejected', { from: socket.id, reason: parsed.data.reason });
     });
 
-    socket.on('webrtc:reject', ({ to, reason }: { to: string; reason?: string }) => {
-      io.to(to).emit('webrtc:rejected', { from: socket.id, reason });
-    });
-
-    /* ── ICE configuration request ────────────────────────────── */
+    /* ── ICE configuration request (TURN credentials restricted to auth users) ─ */
     socket.on('ice:config', () => {
-      socket.emit('ice:config', {
-        iceServers: [
-          { urls: env.stunServer },
-          {
-            urls: env.turnServer,
-            username: env.turnUser,
-            credential: env.turnPassword,
-          },
-        ],
+      const iceServers: any[] = [{ urls: env.stunServer }];
+      if (userId) {
+        iceServers.push({
+          urls: env.turnServer,
+          username: env.turnUser,
+          credential: env.turnPassword,
+        });
+      }
+      socket.emit('ice:config', { iceServers });
+    });
+
+    /* ── Transfer progress (targeted emission to peer) ────────── */
+    socket.on('transfer:progress', (rawPayload: unknown) => {
+      const schema = z.object({
+        transferId: z.string(),
+        toSocketId: z.string().optional(),
+        progress: z.number(),
+        speed: z.string(),
+        eta: z.string(),
+        status: z.string(),
       });
-    });
+      const parsed = schema.safeParse(rawPayload);
+      if (!parsed.success) return;
 
-    /* ── Transfer progress (real-time broadcast) ──────────────── */
-    socket.on('transfer:progress', (payload: {
-      transferId: string; progress: number; speed: string; eta: string; status: string;
-    }) => {
-      io.emit('transfer:progress', payload);
-    });
-
-    socket.on('transfer:complete', (payload: { transferId: string; fileName: string }) => {
-      io.emit('transfer:complete', payload);
+      if (parsed.data.toSocketId) {
+        io.to(parsed.data.toSocketId).emit('transfer:progress', parsed.data);
+      } else {
+        socket.emit('transfer:progress', parsed.data);
+      }
     });
 
     /* ── Disconnect ───────────────────────────────────────────── */

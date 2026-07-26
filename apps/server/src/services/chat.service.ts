@@ -37,11 +37,20 @@ export async function addMessage(input: {
   type?: IChatMessage['type'];
   attachment?: IChatMessage['attachment'];
 }): Promise<Record<string, any>> {
+  // Sanitize text and limit length to 5000 characters
+  const trimmed = (input.text || '').slice(0, 5000);
+  const sanitizedText = trimmed
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
   const msg = await ChatMessage.create({
     roomId: input.roomId,
     senderUserId: input.senderUserId,
     senderName: input.senderName,
-    text: input.text,
+    text: sanitizedText,
     type: input.type || 'text',
     attachment: input.attachment,
   });

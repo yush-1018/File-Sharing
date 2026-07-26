@@ -5,17 +5,22 @@ import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import {
   initiateChunkedUpload, uploadChunk, getChunksStatus, finalizeUpload,
 } from '../services/chunked-upload.service.js';
+import { getTransferById } from '../services/transfer.service.js';
 
 const router = Router();
 
 /* ── Initialize chunked upload ──────────────────────────────── */
 router.post('/:id/chunks/init', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
+  const transferId = req.params.id as string;
+  const transfer = await getTransferById(transferId);
+  if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
+  if (transfer.senderUserId !== req.userId) return res.status(403).json({ error: 'Access denied: not transfer owner' });
+
   const schema = z.object({
     totalChunks: z.number().min(1),
     chunkSize: z.number().min(1),
   });
   const body = schema.parse(req.body);
-  const transferId = req.params.id as string;
   const result = await initiateChunkedUpload(transferId, body.totalChunks, body.chunkSize);
   res.json(result);
 }));
@@ -23,6 +28,10 @@ router.post('/:id/chunks/init', requireAuth, asyncHandler(async (req: AuthReques
 /* ── Upload a single chunk ──────────────────────────────────── */
 router.put('/:id/chunks/:index', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
   const transferId = req.params.id as string;
+  const transfer = await getTransferById(transferId);
+  if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
+  if (transfer.senderUserId !== req.userId) return res.status(403).json({ error: 'Access denied: not transfer owner' });
+
   const chunkIndex = parseInt(req.params.index as string, 10);
   if (isNaN(chunkIndex) || chunkIndex < 0) {
     return res.status(400).json({ error: 'Invalid chunk index' });
@@ -42,6 +51,12 @@ router.put('/:id/chunks/:index', requireAuth, asyncHandler(async (req: AuthReque
 /* ── Get chunk status (for resume) ──────────────────────────── */
 router.get('/:id/chunks/status', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
   const transferId = req.params.id as string;
+  const transfer = await getTransferById(transferId);
+  if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
+  if (transfer.senderUserId !== req.userId && transfer.receiverUserId !== req.userId) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
   const totalChunks = parseInt(req.query.totalChunks as string, 10);
   if (isNaN(totalChunks) || totalChunks < 1) {
     return res.status(400).json({ error: 'totalChunks query parameter required' });
@@ -53,6 +68,10 @@ router.get('/:id/chunks/status', requireAuth, asyncHandler(async (req: AuthReque
 /* ── Finalize (merge chunks + upload to S3) ─────────────────── */
 router.post('/:id/chunks/finalize', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
   const transferId = req.params.id as string;
+  const transfer = await getTransferById(transferId);
+  if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
+  if (transfer.senderUserId !== req.userId) return res.status(403).json({ error: 'Access denied: not transfer owner' });
+
   const result = await finalizeUpload(transferId);
   res.json(result);
 }));

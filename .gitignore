@@ -18,6 +18,8 @@ out/
 
 # Uploaded files
 uploads/
+apps/server/uploads/
+*.enc
 *.mp3
 *.mp4
 *.zip

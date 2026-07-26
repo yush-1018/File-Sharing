@@ -74,12 +74,18 @@ export async function createTransfer(input: {
   return formatTransfer(transfer);
 }
 
-export async function getTransfersByUser(userId: string): Promise<Record<string, any>[]> {
-  const transfers = await Transfer.find({
-    $or: [{ senderUserId: userId }, { receiverUserId: userId }],
-  }).sort({ createdAt: -1 }).lean();
+export async function getTransfersByUser(userId: string, page = 1, limit = 50): Promise<{ transfers: Record<string, any>[]; total: number; page: number }> {
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(100, Math.max(1, limit));
+  const skip = (safePage - 1) * safeLimit;
+  const filter = { $or: [{ senderUserId: userId }, { receiverUserId: userId }] };
 
-  return transfers.map(formatTransfer);
+  const [transfers, total] = await Promise.all([
+    Transfer.find(filter).sort({ createdAt: -1 }).skip(skip).limit(safeLimit).lean(),
+    Transfer.countDocuments(filter),
+  ]);
+
+  return { transfers: transfers.map(formatTransfer), total, page: safePage };
 }
 
 export async function getTransferById(id: string): Promise<Record<string, any> | null> {
@@ -157,8 +163,6 @@ function formatTransfer(t: any): Record<string, any> {
     fileName: t.fileName,
     fileSize: t.fileSize,
     mimeType: t.mimeType,
-    storagePath: t.storagePath,
-    s3Key: t.s3Key,
     transferMethod: t.transferMethod,
     status: t.status,
     progress: t.progress,
@@ -167,7 +171,6 @@ function formatTransfer(t: any): Record<string, any> {
     eta: t.eta,
     direction: t.direction,
     peer: t.peer,
-    resumeToken: t.resumeToken,
     encrypted: t.encrypted,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,

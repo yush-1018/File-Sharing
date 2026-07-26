@@ -1,5 +1,4 @@
-// @ts-nocheck
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { env } from './env.js';
 
 let redis: Redis | null = null;
@@ -72,13 +71,21 @@ export async function markChunkReceived(transferId: string, chunkIndex: number):
   await r.setbit(`chunks:${transferId}`, chunkIndex, 1);
 }
 
-/** Check which chunks have been received */
+/** Check which chunks have been received (O(1) buffer read) */
 export async function getChunkBitmap(transferId: string, totalChunks: number): Promise<boolean[]> {
   const r = getRedis();
-  const result: boolean[] = [];
+  const buffer = await r.getBuffer(`chunks:${transferId}`);
+  if (!buffer) return new Array(totalChunks).fill(false);
+
+  const result: boolean[] = new Array(totalChunks);
   for (let i = 0; i < totalChunks; i++) {
-    const bit = await r.getbit(`chunks:${transferId}`, i);
-    result.push(bit === 1);
+    const byteIndex = Math.floor(i / 8);
+    const bitIndex = 7 - (i % 8);
+    if (byteIndex < buffer.length) {
+      result[i] = ((buffer[byteIndex] >> bitIndex) & 1) === 1;
+    } else {
+      result[i] = false;
+    }
   }
   return result;
 }

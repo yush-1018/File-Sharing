@@ -114,20 +114,26 @@ export async function finalizeUpload(
     }
   }
 
-  // Merge chunks into a single file
+  // Merge chunks into a single file safely
   const mergedPath = path.join(env.uploadDir, `merged-${transferId}${path.extname(transfer.fileName)}`);
-  const output = fs.createWriteStream(mergedPath);
+  try {
+    const output = fs.createWriteStream(mergedPath);
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkPath = path.join(dir, `chunk-${i.toString().padStart(6, '0')}`);
+      const chunkData = fs.readFileSync(chunkPath);
+      output.write(chunkData);
+    }
 
-  for (let i = 0; i < totalChunks; i++) {
-    const chunkPath = path.join(dir, `chunk-${i.toString().padStart(6, '0')}`);
-    const chunkData = fs.readFileSync(chunkPath);
-    output.write(chunkData);
+    await new Promise<void>((resolve, reject) => {
+      output.end(() => resolve());
+      output.on('error', reject);
+    });
+  } catch (err) {
+    if (fs.existsSync(mergedPath)) {
+      try { fs.unlinkSync(mergedPath); } catch {}
+    }
+    throw Object.assign(new Error(`Merge failed: ${(err as Error).message}`), { status: 500 });
   }
-
-  await new Promise<void>((resolve, reject) => {
-    output.end(() => resolve());
-    output.on('error', reject);
-  });
 
   // Upload merged file to S3
   const s3Key = generateS3Key(transfer.fileName);

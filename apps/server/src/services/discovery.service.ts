@@ -1,15 +1,5 @@
 import { Device, type IDevice } from '../models/index.js';
-
-/** Extract subnet (first 3 octets) from an IPv4 address */
-function extractSubnet(ip: string): string {
-  // Handle IPv4-mapped IPv6 addresses (::ffff:192.168.1.5)
-  const cleaned = ip.replace(/^::ffff:/, '');
-  const parts = cleaned.split('.');
-  if (parts.length === 4) {
-    return `${parts[0]}.${parts[1]}.${parts[2]}`;
-  }
-  return 'unknown';
-}
+import { extractSubnet } from '../utils/network.js';
 
 /** Estimate distance label based on subnet comparison */
 function computeDistance(subnet1: string, subnet2: string): string {

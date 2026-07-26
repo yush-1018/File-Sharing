@@ -9,10 +9,9 @@ export interface AuthRequest extends Request {
   userName?: string;
 }
 
-export function authMiddleware(req: AuthRequest, _res: Response, next: NextFunction) {
+export async function authMiddleware(req: AuthRequest, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
-    // Allow unauthenticated — routes decide if they need auth via requireAuth
     return next();
   }
 
@@ -20,28 +19,25 @@ export function authMiddleware(req: AuthRequest, _res: Response, next: NextFunct
     const payload = jwt.verify(header.slice(7), env.jwtSecret) as { sub: string };
     req.userId = payload.sub;
 
-    // Try to get user name from cache, or load from DB
-    (async () => {
-      try {
-        const cached = await cacheGet(`user:${payload.sub}`);
-        if (cached) {
-          req.userName = cached;
-        } else {
-          const user = await User.findById(payload.sub).lean();
-          if (user) {
-            req.userName = user.name;
-            await cacheSet(`user:${payload.sub}`, user.name, 600);
-          }
+    try {
+      const cached = await cacheGet(`user:${payload.sub}`);
+      if (cached) {
+        req.userName = cached;
+      } else {
+        const user = await User.findById(payload.sub).lean();
+        if (user) {
+          req.userName = user.name;
+          await cacheSet(`user:${payload.sub}`, user.name, 600);
         }
-      } catch {
-        // Redis/DB not available — continue without name
       }
-      next();
-    })();
+    } catch {
+      // Redis/DB unavailable — proceed with userId
+    }
   } catch {
-    // invalid token — treat as unauthenticated
-    next();
+    // Invalid token — proceed as unauthenticated
   }
+
+  return next();
 }
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {

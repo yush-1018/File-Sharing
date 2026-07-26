@@ -62,3 +62,18 @@ export async function getUser(userId: string) {
   if (!user) return null;
   return { id: user._id.toString(), name: user.name, email: user.email, guest: user.guest };
 }
+
+/** Clean up inactive guest users older than 30 days */
+export async function cleanupInactiveGuests(): Promise<{ cleanedCount: number }> {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const result = await User.deleteMany({ guest: true, updatedAt: { $lt: thirtyDaysAgo } });
+    if (result.deletedCount > 0) {
+      console.log(`[GuestCleanup] Deleted ${result.deletedCount} inactive guest user records`);
+    }
+    return { cleanedCount: result.deletedCount || 0 };
+  } catch (err) {
+    console.error('[GuestCleanup] Error cleaning guest users:', (err as Error).message);
+    return { cleanedCount: 0 };
+  }
+}

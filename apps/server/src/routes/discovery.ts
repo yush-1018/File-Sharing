@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import { getNearbyDevices, announceDevice } from '../services/discovery.service.js';
+import { extractSubnet } from '../utils/network.js';
 
 const router = Router();
 
@@ -26,12 +27,5 @@ router.post('/announce', requireAuth, asyncHandler(async (req: AuthRequest, res)
   });
   res.status(201).json(device);
 }));
-
-function extractSubnet(ip: string): string {
-  const cleaned = ip.replace(/^::ffff:/, '');
-  const parts = cleaned.split('.');
-  if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}`;
-  return 'unknown';
-}
 
 export default router;
