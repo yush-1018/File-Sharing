@@ -53,6 +53,8 @@ app.get('/health', (_req, res) => res.json({
   uptime: process.uptime(),
 }));
 
+import folderRoutes from './routes/folder.js';
+
 /* ── Routes ─────────────────────────────────────────────────── */
 app.use('/api/auth', authRoutes);
 app.use('/api/transfers', transferRoutes);
@@ -60,6 +62,7 @@ app.use('/api/transfers', chunkedRoutes);
 app.use('/api/discovery', discoveryRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/links', linkRoutes);
+app.use('/api/folders', folderRoutes);
 
 /* ── Error handler (must be last) ───────────────────────────── */
 app.use(errorHandler);

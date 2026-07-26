@@ -213,6 +213,26 @@ const cloudLinkSchema = new Schema<ICloudLink>({
 
 export const CloudLink = mongoose.model<ICloudLink>('CloudLink', cloudLinkSchema);
 
+/* ── Folder Model ─────────────────────────────────────────── */
+export interface IFolder extends Document {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  name: string;
+  parentId?: Types.ObjectId;
+  color?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const folderSchema = new Schema<IFolder>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  name: { type: String, required: true },
+  parentId: { type: Schema.Types.ObjectId, ref: 'Folder', index: true },
+  color: { type: String, default: '#4cc9f0' },
+}, { timestamps: true });
+
+export const Folder = mongoose.model<IFolder>('Folder', folderSchema);
+
 /* ── Seed default chat rooms (on first boot) ────────────────── */
 export async function seedDefaults(): Promise<void> {
   const defaultRooms = [
