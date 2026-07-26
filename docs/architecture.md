@@ -11,11 +11,16 @@
 - **iOS Epic**: Swift plugin for `NSBonjourServices` in `Info.plist` with iOS 14+ Local Network permission handling.
 - **Desktop Epic**: Rust mDNS/SSDP plugin for Tauri background scanning.
 
-### Transport Decision Engine
-1. Score reachability candidates by throughput, latency, and NAT complexity.
-2. Prefer direct LAN or hotspot socket streams.
-3. Use WebRTC DataChannels for online remote peers with TURN fallback.
-4. Fall back to chunked cloud relay for offline or huge file transfers.
+### Transport Decision Engine & TURN Cost Protection
+1. **Direct LAN / Hotspot**: Preferred path (0 external bandwidth cost).
+2. **WebRTC Direct P2P (STUN)**: Preferred remote path (0 server relay bandwidth cost).
+3. **TURN Relay Quota Cap**: TURN fallback (symmetric NAT) is capped at **2GB** max per transfer to prevent server bandwidth cost explosion.
+4. **Cloud Relay Fallback (>2GB)**: Transfers requiring TURN relay over 2GB automatically route to Cloudflare R2 / S3 zero-egress object storage links.
+
+### TURN Provider Cost Comparison Strategy
+- **Self-Hosted Coturn** (DigitalOcean / Hetzner): ~$0.01/GB bandwidth (Recommended for MVP infra).
+- **Cloudflare Calls / WebRTC TURN**: Free/Zero-Egress tier for WebRTC data channels.
+- **Twilio / Xirsys Managed TURN**: $0.40/GB (Restricted due to high per-GB costs for large files).
 
 ## REST API surface
 - POST /api/auth/register

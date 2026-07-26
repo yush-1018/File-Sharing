@@ -10,10 +10,22 @@ export function chooseTransferMethod(input: {
   bluetoothAvailable?: boolean;
   estimatedBytes?: number;
   onlineRemote?: boolean;
+  requiresTurnRelay?: boolean;
 }): TransferPreference {
+  // 1. Direct LAN / Hotspot has zero external bandwidth cost
   if (input.sameLan || input.hotspotReachable) return 'local';
-  if (input.onlineRemote && (input.estimatedBytes || 0) < 20 * 1024 * 1024 * 1024) return 'webrtc';
-  if (input.bluetoothAvailable && (input.estimatedBytes || 0) < 512 * 1024 * 1024) return 'bluetooth';
+  
+  // 2. WebRTC P2P (Direct STUN) - limit to 5GB remote
+  const size = input.estimatedBytes || 0;
+  if (input.onlineRemote) {
+    // If TURN relay is explicitly required (symmetric NAT), cap at 2GB to protect bandwidth costs
+    if (input.requiresTurnRelay && size > 2 * 1024 * 1024 * 1024) {
+      return 'cloud'; // Route >2GB TURN transfers to S3/R2 zero-egress cloud links
+    }
+    if (size < 5 * 1024 * 1024 * 1024) return 'webrtc';
+  }
+  
+  // 3. Fallback to Resumable Cloud Relay (S3/R2 zero egress)
   return 'cloud';
 }
 
