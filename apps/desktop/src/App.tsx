@@ -4,6 +4,7 @@ import {
   CheckCircle, AlertCircle, Info, Wifi, WifiOff
 } from 'lucide-react';
 import { useAppStore, type Page } from './store/useAppStore';
+import LandingPage from './pages/LandingPage';
 import DashboardPage from './pages/DashboardPage';
 import NearbyPage from './pages/NearbyPage';
 import TransfersPage from './pages/TransfersPage';
@@ -13,6 +14,7 @@ import SettingsPage from './pages/SettingsPage';
 
 /* ── Navigation config ──────────────────────────────────────── */
 const navItems: { page: Page; label: string; icon: typeof LayoutDashboard }[] = [
+  { page: 'landing',   label: 'Home',         icon: LayoutDashboard },
   { page: 'dashboard', label: 'Dashboard',   icon: LayoutDashboard },
   { page: 'nearby',    label: 'Nearby',       icon: Radar },
   { page: 'transfers', label: 'Transfers',    icon: ArrowUpDown },
@@ -31,6 +33,7 @@ function PageContent({ page }: { page: Page }) {
   }, [page]);
 
   switch (page) {
+    case 'landing':   return <LandingPage />;
     case 'dashboard': return <DashboardPage />;
     case 'nearby':    return <NearbyPage />;
     case 'transfers': return <TransfersPage />;
@@ -103,6 +106,16 @@ export default function App() {
     (t) => t.status === 'active' || t.status === 'uploading' || t.status === 'in_progress'
   ).length;
 
+  if (page === 'landing') {
+    return (
+      <>
+        <Toasts />
+        <UploadOverlay />
+        <LandingPage />
+      </>
+    );
+  }
+
   return (
     <>
       <Toasts />
@@ -110,11 +123,11 @@ export default function App() {
       <div className="shell">
         {/* Sidebar */}
         <aside className="sidebar">
-          <div className="sidebar-logo">
+          <div className="sidebar-logo" style={{ cursor: 'pointer' }} onClick={() => setPage('landing')}>
             <div className="logo-icon">
               <Zap size={18} color="#fff" />
             </div>
-            <h1>LinkDrop</h1>
+            <h1>Vault</h1>
           </div>
 
           <nav>

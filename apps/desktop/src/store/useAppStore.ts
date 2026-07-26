@@ -5,7 +5,7 @@ import { WebRTCFileTransfer, requestICEConfig } from '../lib/webrtc';
 import { generateFileKey, exportKey, encryptFile } from '../lib/crypto';
 
 /* ── Types ──────────────────────────────────────────────────── */
-export type Page = 'dashboard' | 'nearby' | 'transfers' | 'chat' | 'links' | 'settings';
+export type Page = 'landing' | 'dashboard' | 'nearby' | 'transfers' | 'chat' | 'links' | 'settings';
 
 export interface Device {
   id: string;
