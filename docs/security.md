@@ -21,8 +21,8 @@ LinkDrop maintains strict transparent security definitions across all transfer p
 
 ### B. Cloud Relay Security Protocol (S3 / R2 Links)
 1. **In-Transit Protection**: Enforced TLS 1.3 with HSTS.
-2. **At-Rest Protection**: Server-side AES-256-GCM object storage encryption.
-3. **Password Protection**: Optional user-specified link passwords are hashed client-side using `PBKDF2` (100,000 iterations, SHA-256).
+2. **At-Rest Protection**: Server-side streaming AES-256-GCM object storage encryption (`apps/server/src/services/encryption.service.ts`).
+3. **Password Key Derivation**: User-specified link passwords derive a 256-bit AES-GCM encryption key using `PBKDF2` (100,000 iterations, SHA-256) on the server, encrypting files before disk/S3 write and decrypting during stream downloads.
 
 ---
 

@@ -24,7 +24,7 @@ LinkDrop is a cross-platform file sharing platform that combines local-first dev
 - Chunked resumable uploads for 100GB+ files
 - Cloud relay with expiring links and password protection
 - Device pairing, friend graph, chat, transfer history
-- End-to-end encryption metadata flow with AES-256 file encryption
+- Transparent Dual Encryption Model: Zero-Knowledge E2EE (ECDH P-256 + AES-256-GCM) for P2P/WebRTC; Encrypted in Transit & at Rest (TLS 1.3 + AES-256 + PBKDF2) for Cloud Share Links. See [docs/security.md](file:///c:/Users/ayushraj/Downloads/filesShare/docs/security.md) for cryptographic spec.
 - Background transfer queues, pause, resume, retry, recovery
 
 ## Quick start
@@ -51,4 +51,9 @@ cd ../desktop && pnpm dev
 - **Android Native Epic**: Implement Kotlin plugin for Google Nearby Connections API (handling Android 12+ `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT` runtime permissions & Google API quota approval).
 - **iOS Native Epic**: Implement Swift plugin for `NSBonjourServices` in `Info.plist` with iOS 14+ Local Network permission prompts and background BLE scanning compliance.
 - **Desktop Adapter Epic**: Implement native mDNS / SSDP Rust plugin for Tauri background LAN discovery.
+
+## Observability & Infrastructure Scaling
+- **Structured Correlation Tracking**: End-to-end telemetry via `X-Correlation-ID` header matching `transferId`.
+- **Financial Scaling Model**: 1,000 active users simulated at **~$27.50–$35.00/month** total operating cost using Cloudflare R2 zero-egress storage & self-hosted Hetzner Coturn. See [docs/infra_cost.md](file:///c:/Users/ayushraj/Downloads/filesShare/docs/infra_cost.md) for full financial model & quota caps.
+
 

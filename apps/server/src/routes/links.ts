@@ -5,9 +5,10 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
-import { createLink, getLinks, getLinkById, revokeLink, recordView, recordDownload } from '../services/link.service.js';
+import { createLink, getLinks, getLinkById, revokeLink, recordView, recordDownload, reportLink } from '../services/link.service.js';
 import { uploadToS3, downloadFromS3, generateS3Key } from '../services/storage.service.js';
 import { scanFile } from '../services/scan.service.js';
+import { deriveKeyFromPassword, encryptFile, decryptFile } from '../services/encryption.service.js';
 import { downloadLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
@@ -45,11 +46,26 @@ router.post('/', requireAuth, upload.single('file'), asyncHandler(async (req: Au
     });
   }
 
+  // Server-side encryption at rest / password key derivation
+  let finalPath = req.file.path;
+  let encMetadata: { iv?: string; authTag?: string; salt?: string } = {};
+
+  if (req.body?.password) {
+    const { key, salt } = deriveKeyFromPassword(req.body.password);
+    const encPath = `${req.file.path}.enc`;
+    const { iv, authTag } = await encryptFile(req.file.path, encPath, key);
+    // Remove unencrypted local temp file
+    const fs = await import('node:fs');
+    try { fs.unlinkSync(req.file.path); } catch {}
+    finalPath = encPath;
+    encMetadata = { iv, authTag, salt };
+  }
+
   // Upload to S3
   let s3Key: string | undefined;
   try {
     const key = generateS3Key(req.file.originalname, 'links');
-    await uploadToS3(req.file.path, key, req.file.mimetype);
+    await uploadToS3(finalPath, key, req.file.mimetype);
     s3Key = key;
   } catch (err) {
     console.warn('[Links] S3 upload failed, keeping local file:', (err as Error).message);
@@ -60,10 +76,11 @@ router.post('/', requireAuth, upload.single('file'), asyncHandler(async (req: Au
     fileName: req.file.originalname,
     fileSize: req.file.size,
     mimeType: req.file.mimetype,
-    storagePath: s3Key ? req.file.path : req.file.path,
+    storagePath: finalPath,
     s3Key,
     password: req.body?.password,
     expiresInDays: req.body?.expiresInDays ? Number(req.body.expiresInDays) : 7,
+    ...encMetadata,
   });
 
   res.status(201).json(link);
@@ -131,6 +148,14 @@ router.delete('/:id', requireAuth, asyncHandler(async (req: AuthRequest, res) =>
   const revoked = await revokeLink(req.params.id);
   if (!revoked) return res.status(404).json({ error: 'Link not found' });
   res.json(revoked);
+}));
+
+/* ── DMCA / Abuse Report Takedown (Public) ───────────────────── */
+router.post('/:id/report', asyncHandler(async (req, res) => {
+  const reason = req.body?.reason || 'DMCA / Copyright Infringement or Abuse';
+  const success = await reportLink(req.params.id, reason);
+  if (!success) return res.status(404).json({ error: 'Link not found' });
+  res.json({ success: true, message: 'Link reported and quarantined for review.' });
 }));
 
 export default router;

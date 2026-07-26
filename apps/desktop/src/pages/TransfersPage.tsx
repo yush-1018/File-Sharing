@@ -53,8 +53,9 @@ export default function TransfersPage() {
                     <strong>{t.fileName}</strong>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className={`method-badge ${t.transferMethod === 'local' ? 'lan' : t.transferMethod === 'webrtc' ? 'webrtc' : t.transferMethod === 'bluetooth' ? 'bt' : 'cloud'}`}>
-                      {t.transferMethod}
+                    <span className={`method-badge ${t.transferMethod === 'local' ? 'lan' : t.transferMethod === 'webrtc' ? 'webrtc' : 'cloud'}`}
+                          title={t.transferMethod === 'webrtc' || t.transferMethod === 'local' ? 'End-to-End Encrypted (Zero-Knowledge)' : 'Encrypted in Transit & at Rest (TLS + AES-256)'}>
+                      {t.transferMethod === 'webrtc' ? 'P2P (E2EE)' : t.transferMethod === 'local' ? 'LAN (E2EE)' : 'Cloud (TLS + AES-256)'}
                     </span>
                     <div className="transfer-controls">
                       <button className="btn-icon" title={t.status === 'paused' ? 'Resume' : 'Pause'} onClick={() => toggleTransfer(t.id)}>

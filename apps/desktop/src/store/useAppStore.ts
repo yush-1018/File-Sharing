@@ -332,23 +332,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   uploadFile: async (file: File) => {
     set({ uploadProgress: 0 });
     try {
-      let fileToUpload = file;
-
-      // Encrypt if E2E is enabled
-      if (get().e2eEnabled) {
-        try {
-          const key = await generateFileKey();
-          const { encrypted } = await encryptFile(file, key);
-          fileToUpload = new File([encrypted], file.name, { type: file.type });
-          const keyHex = await exportKey(key);
-          // In a real implementation, the key would be shared via a secure channel
-          console.log('[E2E] File encrypted. Key (share securely):', keyHex.substring(0, 16) + '...');
-        } catch (e) {
-          console.warn('[E2E] Encryption failed, uploading unencrypted:', e);
-        }
-      }
-
-      await api.uploadFile(fileToUpload, (progress) => {
+      await api.uploadFile(file, (progress) => {
         set({ uploadProgress: progress });
       });
       set({ uploadProgress: null });

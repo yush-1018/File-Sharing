@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Copy, Trash2, Link2, Lock, ExternalLink, Plus, Eye, Download } from 'lucide-react';
+import { Copy, Trash2, Link2, Lock, ExternalLink, Plus, Eye, Download, Flag } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 
 function formatBytes(bytes: number): string {
@@ -76,6 +76,13 @@ export default function CloudLinksPage() {
                   </button>
                   <button className="btn-icon" title="Open in browser" onClick={() => window.open(link.url, '_blank')}>
                     <ExternalLink size={14} />
+                  </button>
+                  <button className="btn-icon" title="Report Abuse / DMCA" onClick={() => {
+                    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/links/${link.id}/report`, { method: 'POST' })
+                      .then(() => addToast('Link reported & quarantined for review', 'info'))
+                      .catch(() => addToast('Failed to submit report', 'error'));
+                  }}>
+                    <Flag size={14} />
                   </button>
                   <button className="btn-icon" title="Revoke" onClick={() => revokeLink(link.id)}
                           style={{ borderColor: 'rgba(239,71,111,0.2)', color: 'var(--danger)' }}>

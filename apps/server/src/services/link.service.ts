@@ -76,6 +76,20 @@ export async function revokeLink(id: string): Promise<Record<string, any> | null
   }
 }
 
+export async function reportLink(id: string, reason: string): Promise<boolean> {
+  try {
+    // Auto-deactivate link upon DMCA / malware abuse report
+    const link = await CloudLink.findByIdAndUpdate(
+      id,
+      { $set: { active: false, reported: true, reportReason: reason } },
+      { new: true },
+    );
+    return !!link;
+  } catch {
+    return false;
+  }
+}
+
 function formatLink(l: any): Record<string, any> {
   return {
     id: l._id.toString(),
