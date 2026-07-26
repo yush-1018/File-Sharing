@@ -177,10 +177,15 @@ export interface ICloudLink extends Document {
   storagePath: string;
   s3Key?: string;
   url: string;
-  password?: string;
+  passwordHash?: string;
+  passwordSalt?: string;
+  iv?: string;
+  authTag?: string;
   downloads: number;
   views: number;
   active: boolean;
+  reported?: boolean;
+  reportReason?: string;
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -194,10 +199,15 @@ const cloudLinkSchema = new Schema<ICloudLink>({
   storagePath: String,
   s3Key: String,
   url: { type: String, required: true },
-  password: String,
+  passwordHash: String,
+  passwordSalt: String,
+  iv: String,
+  authTag: String,
   downloads: { type: Number, default: 0 },
   views: { type: Number, default: 0 },
   active: { type: Boolean, default: true },
+  reported: { type: Boolean, default: false },
+  reportReason: String,
   expiresAt: { type: Date, required: true },
 }, { timestamps: true });
 

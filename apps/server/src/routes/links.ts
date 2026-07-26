@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
-import { createLink, getLinks, getLinkById, revokeLink, recordView, recordDownload, reportLink } from '../services/link.service.js';
+import { createLink, getLinks, getLinkById, revokeLink, recordView, recordDownload, reportLink, verifyLinkPassword } from '../services/link.service.js';
 import { uploadToS3, downloadFromS3, generateS3Key } from '../services/storage.service.js';
 import { scanFile } from '../services/scan.service.js';
 import { deriveKeyFromPassword, encryptFile, decryptFile } from '../services/encryption.service.js';
@@ -97,9 +97,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const link = await getLinkById(req.params.id);
   if (!link) return res.status(404).json({ error: 'Link not found' });
   await recordView(link.id);
-  // Don't expose password or storagePath to public
-  const { password, storagePath, s3Key, ...publicLink } = link;
-  res.json({ ...publicLink, hasPassword: !!password });
+  // Don't expose passwordHash, passwordSalt, or storagePath to public
+  const { passwordHash, passwordSalt, storagePath, s3Key, iv, authTag, ...publicLink } = link;
+  res.json({ ...publicLink, hasPassword: !!passwordHash });
 }));
 
 /* ── Download file from link (public with optional password) ── */
@@ -109,8 +109,11 @@ router.get('/:id/download', downloadLimiter, asyncHandler(async (req, res) => {
   if (!link.active) return res.status(410).json({ error: 'Link has been revoked' });
   if (new Date(link.expiresAt) < new Date()) return res.status(410).json({ error: 'Link has expired' });
 
-  // Check password if set
-  if (link.password && req.query.password !== link.password) {
+  // Read password from header or query string (header preferred to prevent URL logging)
+  const providedPassword = (req.headers['x-link-password'] as string) || (req.query.password as string);
+
+  // Check password if set using salted PBKDF2 hash verification
+  if (link.hasPassword && !verifyLinkPassword(link, providedPassword)) {
     return res.status(403).json({ error: 'Password required or incorrect' });
   }
 

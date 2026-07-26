@@ -1,5 +1,6 @@
 import { CloudLink, type ICloudLink } from '../models/index.js';
 import { env } from '../config/env.js';
+import { deriveKeyFromPassword } from './encryption.service.js';
 
 export async function createLink(input: {
   userId: string;
@@ -9,8 +10,19 @@ export async function createLink(input: {
   storagePath: string;
   s3Key?: string;
   password?: string;
+  iv?: string;
+  authTag?: string;
   expiresInDays?: number;
 }): Promise<Record<string, any>> {
+  let passwordHash: string | undefined;
+  let passwordSalt: string | undefined;
+
+  if (input.password) {
+    const derived = deriveKeyFromPassword(input.password);
+    passwordHash = derived.key.toString('hex');
+    passwordSalt = derived.salt;
+  }
+
   const link = await CloudLink.create({
     userId: input.userId,
     fileName: input.fileName,
@@ -19,7 +31,10 @@ export async function createLink(input: {
     storagePath: input.storagePath,
     s3Key: input.s3Key,
     url: `http://localhost:${env.port}/api/links/{id}/download`,
-    password: input.password,
+    passwordHash,
+    passwordSalt,
+    iv: input.iv,
+    authTag: input.authTag,
     downloads: 0,
     views: 0,
     active: true,
@@ -31,6 +46,14 @@ export async function createLink(input: {
   await link.save();
 
   return formatLink(link);
+}
+
+export function verifyLinkPassword(link: Record<string, any>, providedPassword?: string): boolean {
+  if (!link.passwordHash) return true; // No password required
+  if (!providedPassword) return false;
+  
+  const derived = deriveKeyFromPassword(providedPassword, link.passwordSalt);
+  return derived.key.toString('hex') === link.passwordHash;
 }
 
 export async function getLinks(userId: string): Promise<Record<string, any>[]> {
@@ -100,7 +123,9 @@ function formatLink(l: any): Record<string, any> {
     storagePath: l.storagePath,
     s3Key: l.s3Key,
     url: l.url,
-    password: l.password,
+    passwordHash: l.passwordHash,
+    passwordSalt: l.passwordSalt,
+    hasPassword: !!l.passwordHash,
     downloads: l.downloads,
     views: l.views,
     active: l.active,
