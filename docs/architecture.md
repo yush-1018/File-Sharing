@@ -1,11 +1,21 @@
 # LinkDrop architecture
 
-## Decision engine
-1. Detect peer reachability using presence, STUN/TURN, LAN probes, and optional Bluetooth adapter hooks.
-2. Score transport candidates by throughput, packet loss, NAT complexity, and file size.
-3. Prefer direct LAN or hotspot.
-4. Use WebRTC data channels for online remote peers.
-5. Fall back to encrypted cloud relay for offline or huge transfers.
+## Discovery & Transport Strategy
+
+### MVP Discovery (Production Core)
+1. **Zero-Permission IP/LAN Probing**: UDP broadcast & mDNS network queries.
+2. **WebSocket Presence Signaling**: High-reliability real-time peer discovery for web, desktop, and mobile without native permission prompts.
+
+### Phase 2 Native Platform Adapters (Epic Breakdown)
+- **Android Epic**: Kotlin plugin for Nearby Connections API & BLE (requires Android 12+ `BLUETOOTH_SCAN`/`CONNECT` runtime permissions & Google API quota approval).
+- **iOS Epic**: Swift plugin for `NSBonjourServices` in `Info.plist` with iOS 14+ Local Network permission handling.
+- **Desktop Epic**: Rust mDNS/SSDP plugin for Tauri background scanning.
+
+### Transport Decision Engine
+1. Score reachability candidates by throughput, latency, and NAT complexity.
+2. Prefer direct LAN or hotspot socket streams.
+3. Use WebRTC DataChannels for online remote peers with TURN fallback.
+4. Fall back to chunked cloud relay for offline or huge file transfers.
 
 ## REST API surface
 - POST /api/auth/register

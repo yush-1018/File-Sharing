@@ -35,8 +35,20 @@ cd ../apps/server && cp .env.example .env && pnpm dev
 cd ../desktop && pnpm dev
 ```
 
-## Production roadmap
-1. Finish native transport adapters for Bluetooth / mDNS / Nearby APIs.
-2. Wire Flutter and Tauri to the same socket signaling protocol.
-3. Add TURN autoscaling, ClamAV scanning, and telemetry.
-4. Harden E2EE key exchange and delta sync for large folders.
+## MVP Transport & Discovery Architecture
+- **Primary Discovery**: IP/LAN Probing (UDP broadcast / mDNS) + WebSocket Presence signaling. Zero runtime permission friction (no Android 12+ Bluetooth background scan prompts or iOS Local Network blocks).
+- **Primary Data Transports**: Direct LAN Socket Streams + WebRTC DataChannels with STUN/TURN traversal.
+- **Fallback Transport**: Resumable Chunked Cloud Relay via S3/R2 object storage.
+
+## Multi-Phase Roadmap (Platform Epics)
+
+### Phase 1: MVP (Active Core)
+- High-speed LAN discovery & WebRTC P2P direct transfers.
+- Resumable 8MB chunked uploads with cloud link generation.
+- Universal Web & Desktop React client + Flutter mobile base.
+
+### Phase 2: Native Platform Adapters (Dedicated Epic)
+- **Android Native Epic**: Implement Kotlin plugin for Google Nearby Connections API (handling Android 12+ `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT` runtime permissions & Google API quota approval).
+- **iOS Native Epic**: Implement Swift plugin for `NSBonjourServices` in `Info.plist` with iOS 14+ Local Network permission prompts and background BLE scanning compliance.
+- **Desktop Adapter Epic**: Implement native mDNS / SSDP Rust plugin for Tauri background LAN discovery.
+
