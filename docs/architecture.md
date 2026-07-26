@@ -29,14 +29,18 @@
 - POST /api/transfers/:id/resume
 - POST /api/transfers/:id/cancel
 
-## Socket events
-- presence:announce
-- presence:update
-- room:join
-- chat:send
-- chat:message
-- webrtc:signal
-- transfer:progress
+## Cross-Platform Signaling Protocol Spec (`packages/shared`)
+To prevent protocol drift between Flutter (Dart) and Desktop/Web (JS) clients, signaling uses a standardized, framework-agnostic JSON message envelope (`SignalingMessage<T>`):
+- `SignalingMessageType.PRESENCE_ANNOUNCE` (`presence:announce`)
+- `SignalingMessageType.PRESENCE_UPDATE` (`presence:update`)
+- `SignalingMessageType.PRESENCE_LIST` (`presence:list`)
+- `SignalingMessageType.PRESENCE_OFFLINE` (`presence:offline`)
+- `SignalingMessageType.WEBRTC_SIGNAL` (`webrtc:signal`)
+- `SignalingMessageType.WEBRTC_REJECT` (`webrtc:reject`)
+- `SignalingMessageType.TRANSFER_PROGRESS` (`transfer:progress`)
+- `SignalingMessageType.TRANSFER_COMPLETE` (`transfer:complete`)
+
+Both Dart and JS clients serialize and deserialize against this shared spec over standard WebSocket framing, eliminating version mismatch bugs.
 
 ## Large file strategy
 - Default chunk size: 8MB to 32MB adaptive.
