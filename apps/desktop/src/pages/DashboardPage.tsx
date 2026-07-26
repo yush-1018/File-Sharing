@@ -33,8 +33,8 @@ export default function DashboardPage() {
       {/* Hero */}
       <section className="hero">
         <div className="hero-text">
-          <p className="eyebrow">Universal transfer engine</p>
-          <h2>One app for LAN, WebRTC, cloud relay, chat & share links.</h2>
+          <p className="eyebrow">Vault Transfer Engine</p>
+          <h2>Store & share your files. Your terms.</h2>
           <p>Automatically route each file over the fastest secure path based on distance, bandwidth, and reachability.</p>
         </div>
         <div className="hero-actions">
