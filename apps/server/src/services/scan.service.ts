@@ -35,8 +35,14 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
     // ClamAV not installed
   }
 
-  // Graceful degradation — no scanner available
-  console.warn('[Scan] ClamAV not available — skipping malware scan');
+  // Fail-closed security policy in production — rejects uploads if malware scanner is down
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[Scan] CRITICAL: ClamAV scanner unavailable in production — failing closed');
+    return { clean: false, scanner: 'none', threat: 'Malware scanner service unavailable', error: 'ClamAV unavailable' };
+  }
+
+  // Permissive fallback only in development/test environments
+  console.warn('[Scan] ClamAV not available — skipping malware scan (development mode)');
   return { clean: true, scanner: 'none', error: 'ClamAV not available' };
 }
 
