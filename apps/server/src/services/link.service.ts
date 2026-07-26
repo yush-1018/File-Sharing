@@ -30,7 +30,7 @@ export async function createLink(input: {
     mimeType: input.mimeType,
     storagePath: input.storagePath,
     s3Key: input.s3Key,
-    url: `http://localhost:${env.port}/api/links/{id}/download`,
+    url: `${env.baseUrl}/api/links/{id}/download`,
     passwordHash,
     passwordSalt,
     iv: input.iv,
@@ -42,7 +42,7 @@ export async function createLink(input: {
   });
 
   // Update URL with the actual ID
-  link.url = `http://localhost:${env.port}/api/links/${link._id.toString()}/download`;
+  link.url = `${env.baseUrl}/api/links/${link._id.toString()}/download`;
   await link.save();
 
   return formatLink(link);

@@ -9,6 +9,7 @@ if (nodeEnv === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECR
 
 export const env = {
   port: Number(process.env.PORT || 8080),
+  baseUrl: process.env.BASE_URL || process.env.VITE_API_URL || `http://localhost:${process.env.PORT || 8080}`,
   jwtSecret,
   corsOrigin: process.env.CORS_ORIGIN || '*',
   mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/linkdrop',

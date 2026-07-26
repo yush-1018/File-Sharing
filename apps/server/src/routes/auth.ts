@@ -9,13 +9,15 @@ const router = Router();
 
 router.post('/register', authLimiter, asyncHandler(async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string().min(8), name: z.string().min(2) });
-  const result = await registerWithEmail(schema.parse(req.body));
+  const data = schema.parse(req.body);
+  const result = await registerWithEmail(data as { email: string; password: string; name: string });
   res.status(201).json(result);
 }));
 
 router.post('/login', authLimiter, asyncHandler(async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string().min(8) });
-  const result = await loginWithEmail(schema.parse(req.body));
+  const data = schema.parse(req.body);
+  const result = await loginWithEmail(data as { email: string; password: string });
   res.json(result);
 }));
 

@@ -144,19 +144,21 @@ router.get('/:id/download', downloadLimiter, asyncHandler(async (req, res) => {
 
 /* ── Revoke link (requires auth + ownership) ────────────────── */
 router.delete('/:id', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
-  const link = await getLinkById(req.params.id);
+  const linkId = req.params.id as string;
+  const link = await getLinkById(linkId);
   if (!link) return res.status(404).json({ error: 'Link not found' });
   if (link.userId !== req.userId) return res.status(403).json({ error: 'Access denied' });
 
-  const revoked = await revokeLink(req.params.id);
+  const revoked = await revokeLink(linkId);
   if (!revoked) return res.status(404).json({ error: 'Link not found' });
   res.json(revoked);
 }));
 
 /* ── DMCA / Abuse Report Takedown (Public) ───────────────────── */
 router.post('/:id/report', asyncHandler(async (req, res) => {
+  const linkId = req.params.id as string;
   const reason = req.body?.reason || 'DMCA / Copyright Infringement or Abuse';
-  const success = await reportLink(req.params.id, reason);
+  const success = await reportLink(linkId, reason);
   if (!success) return res.status(404).json({ error: 'Link not found' });
   res.json({ success: true, message: 'Link reported and quarantined for review.' });
 }));

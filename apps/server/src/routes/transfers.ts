@@ -106,7 +106,7 @@ router.get('/', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
 
 /* ── Get one transfer ───────────────────────────────────────── */
 router.get('/:id', requireAuth, asyncHandler(async (req: AuthRequest, res) => {
-  const t = await getTransferById(req.params.id);
+  const t = await getTransferById(req.params.id as string);
   if (!t) return res.status(404).json({ error: 'Transfer not found' });
   res.json(t);
 }));
